@@ -87,6 +87,17 @@ class RubiksCubeState extends State<RubiksCube> {
         Vector3.zero(), -cameraPosition.normalized(), Vector3(0, 1.0, 0));
     projection = frustum(-1.0, 1.0, -1.0, 1.0, 2.0, 20.0);
 
+    for (int y = -1; y <= 1; y++) {
+      for (int x = -1; x <= 1; x++) {
+        for (int z = -1; z <= 1; z++) {
+          Entity part = Entity(widget.bevelledCube);
+          part.model = Matrix4.translation(
+              Vector3(x.toDouble(), y.toDouble(), z.toDouble()));
+          cubeParts.add(part);
+        }
+      }
+    }
+
     Entity ul = Entity(widget.bevelledCube);
     ul.model = Matrix4.translation(Vector3(-1.0, 1.0, -1.0));
     cubeParts.add(ul);
