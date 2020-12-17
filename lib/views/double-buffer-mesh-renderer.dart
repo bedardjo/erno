@@ -63,24 +63,22 @@ class DoubleBufferMeshRendererState extends State<DoubleBufferMeshRenderer> {
   ui.Image lastFrame;
   Future<ui.Image> currentFrame;
 
-  int screenWidth;
-  int screenHeight;
+  int bufferWidth;
+  int bufferHeight;
 
   Color transparent = Color.fromARGB(0, 0, 0, 0);
 
   @override
   void initState() {
     super.initState();
-    screenWidth = widget.size.width.ceil();
-    screenHeight = widget.size.height.ceil();
+    bufferWidth = (widget.size.width * .25).ceil();
+    bufferHeight = (widget.size.height * .25).ceil();
     screenBuffers = [
-      Int32List(screenWidth * screenHeight),
-      Int32List(screenWidth * screenHeight),
+      Int32List(bufferWidth * bufferHeight),
+      Int32List(bufferWidth * bufferHeight),
     ];
-    List<List<double>> db = List<List<double>>.generate(
-        widget.size.height.ceil(),
-        (index) =>
-            List<double>.generate(widget.size.width.ceil(), (index) => 10000));
+    List<List<double>> db = List<List<double>>.generate(bufferHeight,
+        (index) => List<double>.generate(bufferWidth, (index) => 10000));
     depthBuffer = DepthBuffer(db);
 
     drawFrame();
@@ -103,8 +101,8 @@ class DoubleBufferMeshRendererState extends State<DoubleBufferMeshRenderer> {
         for (Vertex v in f.vertices) {
           Vector4 translated = mvp * Vector4(v.v.x, v.v.y, v.v.z, 1.0);
           Vector3 pixel = Vector3(
-              screenWidth / 2.0 + translated.x / translated.w * screenWidth,
-              screenHeight / 2.0 - translated.y / translated.w * screenHeight,
+              bufferWidth / 2.0 + translated.x / translated.w * bufferWidth,
+              bufferHeight / 2.0 - translated.y / translated.w * bufferHeight,
               translated.z / translated.w);
           if (pixel.y < minY) {
             minY = pixel.y;
@@ -124,10 +122,10 @@ class DoubleBufferMeshRendererState extends State<DoubleBufferMeshRenderer> {
 
   void drawFrame() {
     Matrix4 globalMVP = widget.projection * widget.view * widget.model;
-    for (int y = 0; y < screenHeight; y++) {
-      for (int x = 0; x < screenWidth; x++) {
+    for (int y = 0; y < bufferHeight; y++) {
+      for (int x = 0; x < bufferWidth; x++) {
         depthBuffer.buffer[y][x] = 10000;
-        screenBuffers[currentBuffer][y * screenWidth + x] = transparent.value;
+        screenBuffers[currentBuffer][y * bufferWidth + x] = transparent.value;
       }
     }
 
@@ -136,7 +134,8 @@ class DoubleBufferMeshRendererState extends State<DoubleBufferMeshRenderer> {
     }
     setState(() {
       currentFrame =
-          getImage(widget.size, screenBuffers[currentBuffer]).then((value) {
+          getImage(bufferWidth, bufferHeight, screenBuffers[currentBuffer])
+              .then((value) {
         this.lastFrame = value;
         return value;
       });
@@ -161,7 +160,7 @@ class DoubleBufferMeshRendererState extends State<DoubleBufferMeshRenderer> {
   }
 
   void fillScanlines(double minY, double maxY, List<Vector3> pixels, Color c) {
-    for (int y = max(0, minY.round()); y <= min(screenHeight - 1, maxY); y++) {
+    for (int y = max(0, minY.round()); y <= min(bufferHeight - 1, maxY); y++) {
       List<Vector3> intersections = getXIntersections(y, pixels);
 
       for (int i = 1; i < intersections.length; i += 2) {
@@ -170,22 +169,20 @@ class DoubleBufferMeshRendererState extends State<DoubleBufferMeshRenderer> {
 
         Vector3 diff = i2 - i1;
         for (int x = max(0, i1.x.round());
-            x <= min(screenWidth - 1, i2.x.round());
+            x <= min(bufferWidth - 1, i2.x.round());
             x++) {
           double t = (x - i1.x) / diff.x;
           double depth = i1.z + diff.z * t;
-          if (depth <= depthBuffer.getDepth(y, x)) {
+          if (depth < depthBuffer.getDepth(y, x)) {
             depthBuffer.setDepth(y, x, depth);
-            screenBuffers[currentBuffer][y * screenWidth + x] = c.value;
+            screenBuffers[currentBuffer][y * bufferWidth + x] = c.value;
           }
         }
       }
     }
   }
 
-  Future<ui.Image> getImage(Size size, Int32List pixels) {
-    int width = size.width.ceil();
-    int height = size.height.ceil();
+  Future<ui.Image> getImage(int width, int height, Int32List pixels) {
     Completer<ui.Image> completer = Completer<ui.Image>();
     ui.decodeImageFromPixels(
       pixels.buffer.asUint8List(),
@@ -231,7 +228,22 @@ class FramePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawImage(frame, Offset(0, 0), p);
+    canvas.drawVertices(
+        ui.Vertices(VertexMode.triangleFan, [
+          Offset(0, 0),
+          Offset(0, size.height),
+          Offset(size.width, size.height),
+          Offset(size.width, 0)
+        ], textureCoordinates: [
+          Offset(0, 0),
+          Offset(0, frame.height.toDouble()),
+          Offset(frame.width.toDouble(), frame.height.toDouble()),
+          Offset(frame.width.toDouble(), 0)
+        ]),
+        BlendMode.dst,
+        Paint()
+          ..shader = ImageShader(frame, TileMode.clamp, TileMode.clamp,
+              Matrix4.identity().storage));
   }
 
   @override
